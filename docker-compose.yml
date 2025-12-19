@@ -191,10 +191,12 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.services.pecan.loadbalancer.server.port=8080"
-      - "traefik.http.routers.pecan.rule=Host(`${TRAEFIK_HOST:-pecan.localhost}`) && PathPrefix(`/pecan/`)"
+    # labels:
+    #   - "traefik.enable=true"
+    #   - "traefik.http.services.pecan.loadbalancer.server.port=8080"
+    #   - "traefik.http.routers.pecan.rule=Host(`${TRAEFIK_HOST:-pecan.localhost}`) && PathPrefix(`/pecan/`)"
+    ports:
+      - "8080:8080"
     volumes:
       - pecan:/data
       - pecan:/var/www/html/pecan/data
