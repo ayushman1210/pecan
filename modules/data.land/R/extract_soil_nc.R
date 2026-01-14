@@ -2,6 +2,9 @@
 #' @details This function takes a single lat/lon point and creates a spatial grid 
 #' around it for sampling soil variability. The grid_size parameter determines 
 #' how many grid points (grid_size x grid_size) are created around the center point.
+#' 
+#' **Depth Standard**: All output soil_depth values represent the depth to the BOTTOM 
+#' of each soil layer in meters, following PEcAn standard convention and CF Conventions.
 #'
 #' @param outdir Output directory for writing down the netcdf file
 #' @param lat Latitude of center point (single numeric value)
@@ -187,8 +190,8 @@ extract_soil_gssurgo <- function(outdir, lat, lon, size=1, grid_size=3, grid_spa
       fraction_of_sand_in_soil = "sandtotal_r", # %
       fraction_of_silt_in_soil = "silttotal_r", # %
       fraction_of_clay_in_soil = "claytotal_r", # %
-      soil_depth = "hzdept_r", # cm
-      soil_depth_bottom = "hzdepb_r", # cm
+      soil_depth_top = "hzdept_r", # cm (top of horizon)
+      soil_depth_bottom = "hzdepb_r", # cm (bottom of horizon)
       organic_matter_pct = "om_r", # %
       bulk_density = "dbthirdbar_r", # g/cm3
       coarse_fragment_pct = "fragvol_r", # %
@@ -196,7 +199,9 @@ extract_soil_gssurgo <- function(outdir, lat, lon, size=1, grid_size=3, grid_spa
     dplyr::mutate(
       dplyr::across(c(dplyr::starts_with("fraction_of"), "coarse_fragment_pct"), 
                     ~ . / 100),
-      horizon_thickness_cm = .data$soil_depth_bottom - .data$soil_depth,
+      horizon_thickness_cm = .data$soil_depth_bottom - .data$soil_depth_top,
+      # PEcAn standard: soil_depth is depth to BOTTOM of layer in meters
+      soil_depth = PEcAn.utils::ud_convert(.data$soil_depth_bottom, "cm", "m"),
       soil_organic_carbon_stock = PEcAn.data.land::soc2ocs(
         soc_percent = PEcAn.data.land::om2soc(.data$organic_matter_pct),
         bulk_density = .data$bulk_density,
@@ -216,7 +221,7 @@ extract_soil_gssurgo <- function(outdir, lat, lon, size=1, grid_size=3, grid_spa
     fraction_of_sand_in_soil = soilprop.new$fraction_of_sand_in_soil,
     fraction_of_silt_in_soil = soilprop.new$fraction_of_silt_in_soil,
     fraction_of_clay_in_soil = soilprop.new$fraction_of_clay_in_soil,
-    soil_depth = soilprop.new$soil_depth,
+    soil_depth = soilprop.new$soil_depth,  # already in meters (bottom of layer)
     soil_organic_carbon_stock = soilprop.new$soil_organic_carbon_stock
   )
   #This ensures that I have at least one soil ensemble in case the modeling part failed
@@ -483,8 +488,12 @@ extract_soil_nc <- function(in.file,outdir,lat,lon){
 
 #' Get standard units for a soil variable
 #'
-#' Given SSURGO names for soil properties, looks up their standard units.
+#' Given standard soil variable names, looks up their standard units.
 #' Note that names must match exactly.
+#' 
+#' **Standard Note on soil_depth**: The PEcAn standard defines soil_depth as the depth to 
+#' the BOTTOM of each soil layer in meters. This aligns with CF Conventions and ensures 
+#' consistency across data sources (gSSURGO, SoilGrids, etc.).
 #'
 #' Supported variables are:
 #'  * `soil_depth`
@@ -526,6 +535,7 @@ extract_soil_nc <- function(in.file,outdir,lat,lon){
 #'
 #' @examples
 #' soil.units("soil_albedo")
+#' soil.units()  # Returns all variables and units
 soil.units <- function(varname = NA){
   variables <- as.data.frame(matrix(c("soil_depth","m",
                                       "soil_cec","meq/100g",

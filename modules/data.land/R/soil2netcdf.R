@@ -16,6 +16,7 @@
 #'
 #' @param soil.data List of soil variables in standard names & units. Minimum is
 #'  soil_depth and two of [sand, silt, clay]. Bulk density encouraged.
+#'  soil_depth values should be depth to BOTTOM of each layer in meters.
 #' @param new.file filename (including path) for output
 #'
 #' @return none
@@ -24,7 +25,7 @@
 #' @examples
 #' \dontrun{ soil.data <- list(fraction_of_sand_in_soil = c
 #'  (0.3,0.4,0.5), fraction_of_clay_in_soil = c(0.3,0.3,0.3), soil_depth = c
-#'  (0.2,0.5,1.0))
+#'  (0.15,0.3,0.6))  # depths to bottom of layers in meters
 #'                         
 #' soil2netcdf(soil.data,"soil.nc") }
 soil2netcdf <- function(soil.data, new.file){

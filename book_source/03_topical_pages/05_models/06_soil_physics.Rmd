@@ -1,0 +1,274 @@
+# Soil Physics Data Standard {#soil-physics-standard}
+
+## Overview
+
+PEcAn uses a standardized approach to soil data through the `soil_physics` input that provides paths to netCDF files containing soil physical and hydraulic parameters. These files are designed to be usable by all models and follow biogeochemistry naming and SI unit conventions from the IOOS and CF metadata standards.
+
+## Core Standard: `soil_depth` Reference
+
+**Critical Standard**: The `soil_depth` dimension represents the **depth to the BOTTOM of each soil layer** in meters, with depth zero at the soil surface.
+
+- **Reference point**: Bottom of layer
+- **Units**: meters (m)
+- **Sign**: Positive downward 
+- **Example**: A layer from 0-30 cm would have `soil_depth = 0.3`
+
+This convention aligns with:
+- CF (Climate and Forecast) Conventions for earth science data
+- The Sipnet model's assumption
+- SoilGrids250m data structure
+
+### Historical Note on Inconsistencies
+
+Prior to standardization:
+- **gSSURGO**: Provided horizon top depths (`hzdept_r`) in cm
+- **SoilGrids**: Provided bottom depths in cm
+- **Some legacy netCDFs**: Contained depth values in cm but were labeled with meter units
+
+These inconsistencies have been corrected in the current codebase. Always verify that depth values and units are consistent when using older soil files.
+
+## Soil Physics Variables in Standard Files
+
+### Texture Variables (Mandatory for Soil Parameterization)
+
+All texture variables are dimensionless fractions (0-1) representing mass fraction of soil <2mm particles.
+
+| Variable Name | Standard Name | Units | Mandatory | Source/Estimation |
+|---|---|---|---|---|
+| `fraction_of_sand_in_soil` | `soil_sand_content` | 1 | Yes | SSURGO, SoilGrids, or direct measurement |
+| `fraction_of_silt_in_soil` | `soil_silt_content` | 1 | Yes | SSURGO, SoilGrids, or calculated (1 - sand - clay) |
+| `fraction_of_clay_in_soil` | `soil_clay_content` | 1 | Yes | SSURGO, SoilGrids, or direct measurement |
+| `fraction_of_gravel_in_soil` | `soil_coarse_fragment_content` | 1 | No | SSURGO, direct measurement |
+
+**Note**: If only 2 of 3 texture components are available, the third is calculated assuming they sum to 1.
+
+### Hydraulic Properties
+
+These are estimated from texture using the Cosby et al. (1984) pedotransfer functions via `PEcAn.data.land::soil_params()`.
+
+| Variable Name | Standard Name | Units | Mandatory | Description |
+|---|---|---|---|---|
+| `soil_hydraulic_b` | Van Genuchten/Campbell pore-size distribution | 1 | Estimated | Controls water retention curve slope; derived from texture |
+| `soil_water_potential_at_saturation` | Soil water potential (ψs) | m | Estimated | Water potential when soil is saturated |
+| `soil_hydraulic_conductivity_at_saturation` | Saturated hydraulic conductivity (Ksat) | m s⁻¹ | Estimated | Vertical conductivity; base for unsaturated K calculations |
+| `volume_fraction_of_water_in_soil_at_saturation` | Volumetric water content at saturation (θs) | m³ m⁻³ | Estimated | Maximum water holding capacity |
+| `volume_fraction_of_water_in_soil_at_field_capacity` | Volumetric water content at field capacity (θfc) | m³ m⁻³ | Estimated | Water content at -0.01 MPa (approximate) |
+| `volume_fraction_of_condensed_water_in_dry_soil` | Residual water content (θr) | m³ m⁻³ | Estimated | Water content at -3.1 MPa |
+| `volume_fraction_of_condensed_water_in_soil_at_wilting_point` | Volumetric water content at wilting point | m³ m⁻³ | Estimated | Water content at -1.5 MPa |
+
+### Thermal Properties
+
+| Variable Name | Standard Name | Units | Mandatory | Description |
+|---|---|---|---|---|
+| `soil_bulk_density` | Soil bulk density | kg m⁻³ | Recommended | Total soil mass per unit volume including air/water |
+| `soil_thermal_conductivity` | Thermal conductivity (dry state) | W m⁻¹ K⁻¹ | Estimated | Heat conduction capacity at typical field moisture |
+| `soil_thermal_conductivity_at_saturation` | Thermal conductivity (saturated) | W m⁻¹ K⁻¹ | Estimated | Heat conduction capacity at saturation |
+| `soil_thermal_capacity` | Volumetric heat capacity | J kg⁻¹ K⁻¹ | Estimated | Heat storage per unit mass |
+| `soil_albedo` | Soil surface albedo | 1 | Estimated | Fraction of shortwave radiation reflected (0-1) |
+
+### Organic Matter and Carbon
+
+| Variable Name | Standard Name | Units | Mandatory | Description |
+|---|---|---|---|---|
+| `soilC` | Soil organic carbon concentration | percent | No | Percentage carbon in soil; estimated from organic matter |
+| `soil_organic_carbon_stock` | Soil organic carbon stock | kg m⁻² | No | Carbon content per unit area, layer-specific or vertically integrated |
+| `soil_ph` | Soil pH | 1 | No | Soil acidity (-log[H+]); from SSURGO or measurement |
+| `soil_cec` | Cation exchange capacity | meq/100g | No | Charge available for nutrient binding; from SSURGO or measurement |
+
+### Soil Type Classifications
+
+| Variable Name | Standard Name | Units | Mandatory | Description |
+|---|---|---|---|---|
+| `soil_type` | USDA soil texture class | string | No | Class name (e.g., "Loam", "Clay", "Sandy loam") |
+| `soil_n` | Soil class code | 1 | Estimated | Numeric index (1-17) used internally for parameterization |
+
+### Deprecated or Internal Variables
+
+The following variables are kept for backward compatibility but should not be used in new workflows:
+
+| Variable Name | Notes |
+|---|---|
+| `z_top` | Use `soil_depth` only; reference ambiguity |
+| `z_node` | Use `soil_depth` only; layer center assumption not universal |
+| `z_bottom` | Redundant; `soil_depth` is bottom depth |
+| `thcond0`, `thcond1`, `thcond2`, `thcond3` | Internal intermediate calculations; use `soil_thermal_conductivity` instead |
+| `slpotwp`, `slpotcp`, `slcpd`, `slden` | Internal or non-standard names; use standard variables listed above |
+
+## Data Source and Estimation Tools
+
+### Texture Data Sources
+
+1. **SSURGO (gSSURGO)**: `PEcAn.data.land::extract_soil_gssurgo()`
+   - Most detailed US soil survey data
+   - Horizon-specific texture and bulk density
+   - **Note**: Depth reference corrected to bottom of horizon; unit conversion (cm → m) applied
+
+2. **SoilGrids250m v2.0**: `PEcAn.data.land::soil_params_ensemble_soilgrids()`
+   - Global coverage at 250m resolution
+   - Includes uncertainty quantiles (5th, 50th, 95th percentiles)
+   - Bottom depth convention; units in meters
+
+3. **Direct Measurement**: User-provided files or manual input
+   - Preferred for high-quality site-specific data
+   - Must conform to standard variable names and units
+
+### Hydraulic Parameter Estimation
+
+- **Tool**: `PEcAn.data.land::soil_params()`
+- **Method**: Cosby et al. (1984) pedotransfer functions via regression relationships
+- **Inputs**: Sand, silt, clay (any 2 of 3), and optional bulk density
+- **Uncertainty**: Cosby et al. provides standard deviations; ensemble sampling recommended
+
+### Thermal Property Estimation
+
+- **Calculated from**: Texture (sand/silt/clay), bulk density, soil class look-up tables
+- **Method**: Weighted averaging of constituent materials (de Vries model)
+- **Included in**: `soil_params()` output automatically
+
+### Organic Carbon Estimation
+
+1. **From organic matter**: `PEcAn.data.land::om2soc()` (Van Bemmelen factor = 1.724)
+2. **From SOC concentration to stock**: `PEcAn.data.land::soc2ocs()`
+   - Inputs: SOC percent, bulk density, layer thickness, coarse fragment fraction
+   - Output: Organic carbon stock (kg m⁻²)
+3. **From SoilGrids**: `PEcAn.data.land::soilgrids_ic_process()` for initial conditions
+
+## netCDF File Structure
+
+### Required Dimensions
+
+- `depth` (unlimited or fixed length): Values in meters representing bottom of each layer
+- `time` (optional): For time-varying soil properties
+
+### Example File (CDL/ncdump format)
+
+```netcdf
+netcdf soil_physics_example {
+  dimensions:
+    depth = 6 ;
+  variables:
+    float depth(depth) ;
+      depth:long_name = "Soil layer depth to bottom" ;
+      depth:units = "m" ;
+      depth:positive = "down" ;
+    
+    float fraction_of_sand_in_soil(depth) ;
+      fraction_of_sand_in_soil:units = "1" ;
+      fraction_of_sand_in_soil:long_name = "Sand mass fraction" ;
+    
+    float fraction_of_clay_in_soil(depth) ;
+      fraction_of_clay_in_soil:units = "1" ;
+      fraction_of_clay_in_soil:long_name = "Clay mass fraction" ;
+    
+    float fraction_of_silt_in_soil(depth) ;
+      fraction_of_silt_in_soil:units = "1" ;
+      fraction_of_silt_in_soil:long_name = "Silt mass fraction" ;
+    
+    float soil_bulk_density(depth) ;
+      soil_bulk_density:units = "kg m-3" ;
+      soil_bulk_density:long_name = "Soil bulk density" ;
+    
+    float volume_fraction_of_water_in_soil_at_saturation(depth) ;
+      volume_fraction_of_water_in_soil_at_saturation:units = "m3 m-3" ;
+      volume_fraction_of_water_in_soil_at_saturation:long_name = "Water content at saturation" ;
+    
+    float soil_hydraulic_conductivity_at_saturation(depth) ;
+      soil_hydraulic_conductivity_at_saturation:units = "m s-1" ;
+      soil_hydraulic_conductivity_at_saturation:long_name = "Saturated hydraulic conductivity" ;
+  
+  data:
+    depth = 0.15, 0.3, 0.6, 1.0, 1.5, 2.0 ;
+    fraction_of_sand_in_soil = 0.35, 0.40, 0.42, 0.45, 0.48, 0.50 ;
+    fraction_of_clay_in_soil = 0.25, 0.23, 0.22, 0.20, 0.18, 0.15 ;
+    fraction_of_silt_in_soil = 0.40, 0.37, 0.36, 0.35, 0.34, 0.35 ;
+    soil_bulk_density = 1300, 1350, 1400, 1420, 1440, 1450 ;
+    volume_fraction_of_water_in_soil_at_saturation = 0.48, 0.46, 0.44, 0.42, 0.40, 0.38 ;
+    soil_hydraulic_conductivity_at_saturation = 1.0e-5, 8.5e-6, 7.2e-6, 6.5e-6, 5.8e-6, 5.0e-6 ;
+}
+```
+
+## Creating Soil Physics Files
+
+### Using `soil2netcdf()`
+
+```r
+library(PEcAn.data.land)
+
+# Prepare soil data list
+soil_data <- list(
+  fraction_of_sand_in_soil = c(0.35, 0.40),
+  fraction_of_clay_in_soil = c(0.25, 0.23),
+  soil_depth = c(0.15, 0.30)
+  # soil_params() will estimate all other parameters
+)
+
+# Create netCDF file
+soil2netcdf(soil_data, "my_soil_physics.nc")
+```
+
+### From SSURGO
+
+```r
+outdir <- "~/pecan_sites"
+extract_soil_gssurgo(outdir, lat = 40.0, lon = -80.0)
+```
+
+### From SoilGrids Ensemble
+
+```r
+settings <- read.settings("pecan.xml")
+soil_params_ensemble_soilgrids(
+  settings = settings,
+  sand = sand_df,   # Data frame: Depth, Quantile, Siteid, Value columns
+  clay = clay_df,
+  silt = silt_df,
+  outdir = "~/pecan_runs"
+)
+```
+
+## Model-Specific Considerations
+
+### Important Caveat on Soil PFTs
+
+Some models (e.g., ED2, CLM) support the concept of a "soil PFT" that specifies distributions for model-specific parameters that vary by soil type. These parameters follow model-specific naming and unit conventions and are **not** part of the PEcAn standard soil_physics input. Model-specific soil parameters should be documented separately by model developers.
+
+## References and Standards
+
+- **Cosby et al. (1984)**: "A statistical exploration of the relationships of soil properties to soil water retention." *Journal of Soil Science*, 35, 454-465.
+- **CF Conventions**: http://cfconventions.org/ (Sections on coordinate types and depth)
+- **IOOS Conventions**: http://www.ioos.noaa.gov/
+- **SSURGO Database**: https://www.nrcs.usda.gov/products-services/web-soil-survey
+- **SoilGrids**: https://soilgrids.org/ (with methodology papers)
+
+## Troubleshooting
+
+### Inconsistent Depth Values
+
+**Problem**: Depth values appear to be in cm but are labeled as meters.
+
+**Solution**: 
+1. Check the source code version (gSSURGO extraction was corrected in recent updates)
+2. Verify with: `max(depth_values)` - should be a reasonable depth in meters (typically 0.1-2.0, not 1000+)
+3. If necessary, convert manually: `depth_values / 100` before processing
+
+### Missing Hydraulic Parameters
+
+**Problem**: Soil texture is provided but hydraulic parameters are missing.
+
+**Solution**: Call `soil_params()` explicitly:
+```r
+enhanced_soil <- soil_params(
+  sand = soil_data$fraction_of_sand_in_soil,
+  clay = soil_data$fraction_of_clay_in_soil,
+  bulk = soil_data$soil_bulk_density
+)
+soil_data[names(enhanced_soil)] <- enhanced_soil
+```
+
+### Ensemble vs. Single Values
+
+The standard supports both:
+- **Ensemble files**: One layer depth per file, multiple realizations over time dimension
+- **Parameter files**: All depths in one file (current standard)
+
+Choose based on model requirements and uncertainty analysis needs.

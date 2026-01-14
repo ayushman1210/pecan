@@ -72,9 +72,14 @@ estimate_dirichlet_parameters <- function(means, quantiles) {
 #' @param settings A multi-site settings
 #' @param sand,clay,silt Data frames containing fraction in percentage from SoilGrids250m
 #'  v2.0, each with columns "Depth", "Quantile", "Siteid", and "Value"
+#'  Note: Depth values in input data are converted to meters and represent bottom of layer per PEcAn standard
 #' @param outdir Provide the path to store the parameter files
 #' @param write_into_settings Whether to write the path of parameter file into
 #'  the setting. The default is TRUE
+#'
+#' @details 
+#' **Depth Standard**: Output soil_depth values represent the depth to the BOTTOM 
+#' of each soil layer in meters, following PEcAn standard convention and CF Conventions.
 #'
 #' @examples
 #' \dontrun{
