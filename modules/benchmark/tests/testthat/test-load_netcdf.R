@@ -51,3 +51,43 @@ test_that("load_x_netcdf properly loads NetCDF and parses time", {
   # Cleanup
   unlink(nc_file)
 })
+
+test_that("load_x_netcdf parses AmeriFlux CF time formats with timezone offsets", {
+  skip_if_not_installed("ncdf4")
+  
+  nc_file <- tempfile(fileext = ".nc")
+  
+  # AmeriFlux met2CF uses format: "days since 2000-01-01 00:00:00 -6" 
+  # We test 0, 3 hours, and 6 hours (0.125 and 0.25 days)
+  time_vals <- c(0, 0.125, 0.25)
+  dim_time <- ncdf4::ncdim_def("time", "days since 2000-01-01 00:00:00 -6", time_vals)
+  
+  var_gpp <- ncdf4::ncvar_def("GPP", "kg m-2 s-1", dim_time, missval = -9999, prec = "double")
+  nc_new <- ncdf4::nc_create(nc_file, list(var_gpp))
+  ncdf4::ncvar_put(nc_new, var_gpp, c(1.1, 2.2, 3.3))
+  ncdf4::nc_close(nc_new)
+  
+  format_list <- list(na.strings = c("-9999"))
+  res <- load_x_netcdf(nc_file, format = format_list, site = NULL, vars = c("GPP"))
+  
+  expect_s3_class(res, "data.frame")
+  expect_equal(nrow(res), 3)
+  expect_equal(res$GPP, c(1.1, 2.2, 3.3))
+  
+  time_col <- if ("posix" %in% names(res)) "posix" else "time"
+  expect_true(time_col %in% names(res))
+  expect_s3_class(res[[time_col]], "POSIXct")
+  
+  # Based on load_netcdf logic: date_time (2000-01-01 00:00:00) - 6 hours
+  # = 1999-12-31 18:00:00 UTC. 
+  # 0.125 days = 3 hours. 0.25 days = 6 hours.
+  expected_time <- as.POSIXct(c(
+    "1999-12-31 18:00:00", 
+    "1999-12-31 21:00:00", 
+    "2000-01-01 00:00:00"
+  ), tz = "UTC")
+  
+  expect_equal(res[[time_col]], expected_time)
+  
+  unlink(nc_file)
+})
